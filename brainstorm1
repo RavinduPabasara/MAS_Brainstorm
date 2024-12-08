@@ -1,0 +1,923 @@
+import os
+import time
+import random
+import json
+import re
+from datetime import datetime
+from openai import OpenAI
+import nltk
+from nltk.tokenize import sent_tokenize, word_tokenize
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# Add colorama for colored terminal output
+from colorama import init, Fore, Style
+
+# Initialize colorama
+init(autoreset=True)
+
+
+# Function to download NLTK data
+def download_nltk_data():
+    try:
+        nltk.download('punkt')
+        nltk.download('stopwords')
+        nltk.download('wordnet')
+    except Exception as e:
+        print(f"Error downloading NLTK data: {e}")
+        print("Please manually download the required NLTK data using the following commands:")
+        print(">>> import nltk")
+        print(">>> nltk.download('punkt')")
+        print(">>> nltk.download('stopwords')")
+        print(">>> nltk.download('wordnet')")
+        exit(1)
+
+
+# Call the download function at the start of the script
+download_nltk_data()
+
+
+def print_section_header(title):
+    """Print a visually distinct section header."""
+    print("\n" + "=" * 80)
+    print(Fore.CYAN + Style.BRIGHT + title.center(80))
+    print("=" * 80 + Style.RESET_ALL)
+
+
+def print_expert_contribution(expert_name, expertise, contribution):
+    """Print expert contributions in a structured, colorful format."""
+    print(Fore.GREEN + f"\n{expert_name} ({expertise}):" + Style.RESET_ALL)
+    print(Fore.YELLOW + contribution + Style.RESET_ALL)
+
+
+def print_progress_assessment(assessment):
+    """Print progress assessment with distinct formatting."""
+    print(Fore.MAGENTA + "\nProgress Assessment:" + Style.RESET_ALL)
+    print(Fore.BLUE + assessment + Style.RESET_ALL)
+
+
+def print_synthesized_solution(solution):
+    """Print the synthesized solution with emphasis."""
+    print_section_header("SYNTHESIZED SOLUTION")
+    print(Fore.GREEN + solution + Style.RESET_ALL)
+
+
+def print_implementation_design(design):
+    """Print the implementation design with emphasis."""
+    print_section_header("IMPLEMENTATION DESIGN")
+    print(Fore.CYAN + design + Style.RESET_ALL)
+
+
+def print_tech_stack_and_parts(tech_stack, implementation_parts):
+    """Print tech stack and implementation parts."""
+    print(Fore.MAGENTA + "\nTech Stack: " + Style.RESET_ALL + tech_stack)
+    print(Fore.MAGENTA + "\nImplementation Parts:" + Style.RESET_ALL)
+    for part in implementation_parts:
+        print(Fore.BLUE + f"- {part}" + Style.RESET_ALL)
+
+
+def print_implementation_progress(total_files):
+    """Print implementation progress."""
+    print_section_header("IMPLEMENTATION COMPLETE")
+    print(Fore.GREEN + f"Total files created: {total_files}" + Style.RESET_ALL)
+
+
+# Set your OpenAI API key
+os.environ[
+    'OPENAI_API_KEY'] = "key"
+
+
+def create_llm(model_name):
+    return OpenAI()
+
+
+def api_call_with_delay(client, prompt, model="gpt-4o-mini"):
+    time.sleep(5)  # Reduced delay to 5 seconds
+    response = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.8
+    )
+    return response.choices[0].message.content
+
+
+def generate_dynamic_experts(client, topic, goal, num_experts=None):
+    """
+    Dynamically generate experts based on the problem domain
+
+    Args:
+        client: LLM client
+        topic: The brainstorming topic
+        goal: The specific goal of the session
+        num_experts: Optional - predefined number of experts.
+                     If None, LLM will determine optimal number.
+
+    Returns:
+        List of expert dictionaries with dynamic personas
+    """
+    prompt = f"""
+    Analyze the following problem domain and design a diverse team of experts:
+
+    Topic: {topic}
+    Goal: {goal}
+
+    Expert Generation Guidelines:
+    1. Identify critical knowledge domains required to solve this problem
+    2. Create expert personas with unique, complementary expertise
+    3. Ensure experts can approach the problem from different perspectives
+    4. Provide a concise description of each expert's background and potential contribution
+    5. If no number of experts is specified, recommend an optimal team size
+
+    Output Format for Each Expert:
+    - Name: [Creative professional name]
+    - Expertise: [Specific, niche domain expertise]
+    - Background: [Brief professional background]
+    - Unique Perspective: [What makes this expert's approach distinctive]
+    - Potential Contribution: [How they might uniquely advance the solution]
+
+    Suggested Team Size: {f'Exactly {num_experts} experts' if num_experts else 'Dynamically determined'}
+    """
+
+    # Use the LLM to generate expert team
+    expert_generation_response = api_call_with_delay(client, prompt)
+
+    # Parse the response into structured expert data
+    experts = parse_expert_generation_response(expert_generation_response)
+
+    return experts
+
+
+def parse_expert_generation_response(response):
+    """
+    Parse the LLM-generated expert description into structured data
+
+    Args:
+        response: Text response from LLM describing experts
+
+    Returns:
+        List of expert dictionaries
+    """
+    # Implement parsing logic to extract expert details
+    # This could use regex, structured parsing, or another LLM call
+    experts = []
+
+    # Example parsing (would need more robust implementation)
+    expert_sections = response.split('\n\n')
+    for section in expert_sections:
+        if 'Name:' in section and 'Expertise:' in section:
+            expert = {
+                'name': re.search(r'Name:\s*(.+)', section).group(1),
+                'expertise': re.search(r'Expertise:\s*(.+)', section).group(1),
+                'background': re.search(r'Background:\s*(.+)', section).group(1) if 'Background:' in section else '',
+                'unique_perspective': re.search(r'Unique Perspective:\s*(.+)', section).group(
+                    1) if 'Unique Perspective:' in section else '',
+                'potential_contribution': re.search(r'Potential Contribution:\s*(.+)', section).group(
+                    1) if 'Potential Contribution:' in section else ''
+            }
+            experts.append(expert)
+
+    return experts
+
+
+def generate_contribution(client, conversation_history, expert, interaction_strategy):
+    """
+    Enhanced contribution generation that follows a more structured
+    and meaningful interaction approach.
+    """
+    try:
+        prompt = f"""
+        As {expert['name']}, an expert in {expert['expertise']}, 
+        contribute to the discussion with the following guidance:
+
+        Interaction Strategy: {interaction_strategy}
+        Current Conversation Context: {conversation_history}
+        Format: Very Concise and on-point
+
+        Your contribution should:
+        1. Build directly on previous insights.
+        2. Introduce unique perspective from your expertise
+        3. Address specific knowledge gaps and don't hesitate to point out issues in the previous discussions
+        4. Maintain a natural, conversational tone and structure and should be in a format of a single paragraph limited to 2-3 sentences.
+        5. Aim to advance collective understanding.
+        6. Challenge the unsure points and weak points of the interaction
+        7. Ask questions if needed and answer the questions if been asked.
+
+        Provide a thoughtful, substantive contribution that 
+        moves the conversation forward meaningfully but improves the intergrity by challenging vague ideas. And you should maintain a conversational tone and keep your responses human-like.
+        """
+
+        response = api_call_with_delay(client, prompt)
+        return response.strip()
+    except Exception as e:
+        print(f"Error generating expert contribution: {e}")
+        return f"{expert['name']} is processing the discussion..."
+
+
+def extract_round_ideas(client, conversation_history, round_number):
+    """
+    Extract key ideas and insights from a specific round of conversation.
+
+    This function uses an LLM to distill the most important conceptual
+    contributions from the round, creating a more structured and
+    focused representation of the discussion.
+    """
+    try:
+        # Filter conversation history to this round's contributions
+        round_contributions = [
+            msg for msg in conversation_history
+            if msg['speaker'] != 'Moderator' and
+               msg['speaker'] != 'Progress Checker' and
+               msg['speaker'] != 'Solution Synthesizer'
+        ]
+
+        # Combine all contributions into a single text
+        combined_text = "\n".join([msg['content'] for msg in round_contributions])
+
+        prompt = f"""
+        Carefully analyze the following expert contributions from Round {round_number}:
+
+        {combined_text}
+
+        Your task is to extract and synthesize:
+        1. Core Ideas: The most significant conceptual insights
+        2. Unique Perspectives: Distinctive viewpoints or approaches
+        3. Potential Connections: Emerging links between different experts' contributions
+        4. Knowledge Gaps: Areas that need further exploration
+
+        Provide a structured, concise summary that captures the essence of the round's intellectual discourse. Focus on quality of insight over quantity of words.
+
+        Output Format:
+        ## Core Ideas
+        - [Concise, clear idea]
+
+        ## Unique Perspectives
+        - [Distinctive viewpoint]
+
+        ## Emerging Connections
+        - [Conceptual link between contributions]
+
+        ## Unexplored Territories
+        - [Potential areas for deeper investigation]
+        """
+
+        # Use LLM to extract and structure ideas
+        round_ideas = api_call_with_delay(client, prompt)
+        return round_ideas
+
+    except Exception as e:
+        print(f"Error extracting round ideas: {e}")
+        return "Unable to extract round ideas."
+
+
+def check_progress(client, conversation_history, goal):
+    try:
+        formatted_history = "\n".join([f"{msg['speaker']}: {msg['content']}" for msg in conversation_history])
+        prompt = (f"As a neutral observer, assess the progress of the following brainstorming session "
+                  f"towards the goal: '{goal}'. Provide a brief summary of key points discussed "
+                  f"and suggest areas that need further exploration. Keep your response under 100 words.\n\n"
+                  f"Discussion so far:\n{formatted_history}\n\n"
+                  f"Progress assessment:")
+
+        response = api_call_with_delay(client, prompt)
+        return response.strip()
+    except Exception as e:
+        print(f"Error checking progress: {e}")
+        return "Unable to assess progress due to an error."
+
+
+def synthesize_solution(client, conversation_history, goal):
+    try:
+        formatted_history = "\n".join([f"{msg['speaker']}: {msg['content']}" for msg in conversation_history])
+        prompt = (f"As a solution synthesizer, review the entire brainstorming session and propose a comprehensive "
+                  f"solution that aligns with the goal: '{goal}'. Consider all expert contributions and integrate "
+                  f"the best ideas. Provide a clear, actionable solution in 150-200 words.\n\n"
+                  f"Full discussion:\n{formatted_history}\n\n"
+                  f"Synthesized solution:")
+
+        response = api_call_with_delay(client, prompt)
+        return response.strip()
+    except Exception as e:
+        print(f"Error synthesizing solution: {e}")
+        return "Unable to synthesize a solution due to an error."
+
+
+def generate_meaningful_context(conversation_history, num_experts):
+    """
+    Analyze the conversation history and generate a context map that helps
+    guide more meaningful interactions between experts.
+    """
+    try:
+        client = create_llm("gpt-4o-mini")
+        prompt = f"""
+        Analyze the current conversation history and provide strategic guidance 
+        for the next round of expert interactions. Your goal is to:
+
+        1. Identify key themes and unexplored aspects of the topic
+        2. Suggest potential knowledge gaps that need addressing
+        3. Recommend interaction strategies that will:
+           - Build upon previous insights
+           - Explore complementary perspectives
+           - Prevent repetition
+           - Create a cohesive narrative of understanding
+
+        Conversation History:
+        {conversation_history}
+
+        Number of Experts: {num_experts}
+
+        Output Format:
+        - Main Conversation Themes
+        - Unexplored Areas
+        - Suggested Interaction Dynamics
+        - Recommended Areas of Inquiry
+        """
+
+        context_guidance = api_call_with_delay(client, prompt)
+        return context_guidance
+    except Exception as e:
+        print(f"Error generating meaningful context: {e}")
+        return None
+
+
+def create_dynamic_interaction_strategy(client, experts, topic, goal):
+    """
+    Generate a dynamic interaction strategy that considers
+    each expert's unique background and potential contributions
+
+    Args:
+        client: LLM client
+        experts: List of dynamically generated experts
+        topic: Brainstorming topic
+        goal: Session goal
+
+    Returns:
+        Detailed interaction strategy document
+    """
+    expert_details = "\n\n".join([
+        f"Expert: {expert['name']}\n"
+        f"Expertise: {expert['expertise']}\n"
+        f"Unique Perspective: {expert.get('unique_perspective', 'N/A')}\n"
+        f"Potential Contribution: {expert.get('potential_contribution', 'N/A')}"
+        for expert in experts
+    ])
+
+    prompt = f"""
+    Design a sophisticated, adaptive interaction strategy for our expert team:
+
+    Topic: {topic}
+    Goal: {goal}
+
+    Expert Team Details:
+    {expert_details}
+
+    Strategy Design Objectives:
+    1. Maximize knowledge cross-pollination
+    2. Leverage each expert's unique perspective
+    3. Create a dynamic, non-linear interaction model
+    4. Ensure comprehensive problem exploration
+
+    For each interaction round, provide:
+    - Recommended interaction sequence
+    - Specific prompting guidelines for each expert
+    - Potential bridging questions to connect expertise domains
+    - Strategies to prevent redundancy and encourage novel thinking
+
+    Output a detailed, flexible interaction blueprint that adapts to emerging insights.
+    """
+
+    interaction_strategy = api_call_with_delay(client, prompt)
+    return interaction_strategy
+
+
+def create_enhanced_interaction_strategy(client, previous_round_ideas, experts, goal):
+    """
+    Create a more sophisticated interaction strategy that learns
+    from previous rounds and dynamically adapts the expert interactions.
+    """
+    try:
+        prompt = f"""
+        Design an advanced interaction strategy that builds upon previous insights:
+
+        Goal: {goal}
+
+        Previous Round Insights:
+        {previous_round_ideas}
+
+        Strategy Design Objectives:
+        1. Identify knowledge progression from previous round
+        2. Highlight areas requiring deeper exploration
+        3. Guide experts to expand on promising ideas
+        4. Prevent redundant discussions
+        5. Maintain intellectual diversity
+
+        For each expert, determine:
+        - Specific intellectual contribution expected
+        - Recommended area of focus
+        - Suggested interaction approach
+        - Potential bridging questions to connect different expertise domains
+
+        Produce a nuanced, adaptive interaction blueprint that ensures 
+        collaborative, progressive knowledge generation.
+        """
+
+        interaction_strategy = api_call_with_delay(client, prompt)
+        return interaction_strategy
+
+    except Exception as e:
+        print(f"Error creating enhanced interaction strategy: {e}")
+        return None
+
+
+def design_implementation(client, synthesized_solution, goal):
+    try:
+        prompt = f"""
+                Create a comprehensive set of project documents for the following solution:
+
+                Solution: {synthesized_solution}
+                Goal: {goal}
+
+                The documentation should include:
+
+                1. **Project Proposal**  
+                   - Background and problem statement  
+                   - Objectives  
+                   - Benefits and expected outcomes  
+                   - Initial budget and timeline overview  
+
+                2. **Project Charter**  
+                   - High-level objectives  
+                   - Key stakeholders  
+                   - Roles and responsibilities  
+                   - Scope and constraints  
+
+                3. **Requirements Specification**  
+                   - Functional and non-functional requirements  
+                   - Use cases or user stories  
+                   - Constraints and assumptions  
+
+                4. **Project Plan**  
+                   - Work Breakdown Structure (WBS)  
+                   - Timeline with milestones  
+                   - Resource allocation details  
+
+                5. **Risk Management Plan**  
+                   - Risk identification and analysis  
+                   - Mitigation strategies  
+                   - Contingency plans  
+
+                6. **Communication Plan**  
+                   - Communication methods and tools  
+                   - Schedule of updates and meetings  
+                   - Stakeholder communication matrix  
+
+                7. **Budget and Financial Plan**  
+                   - Cost breakdown  
+                   - Allocation and tracking  
+
+                8. **Design Document**  
+                   - System architecture or process flow diagrams  
+                   - UI/UX design guidelines  
+
+                9. **Testing Plan**  
+                   - Testing objectives and scope  
+                   - Types of testing to be performed  
+                   - Success criteria  
+
+                10. **Implementation/Deployment Plan**  
+                    - Deployment process steps  
+                    - Rollback strategies  
+
+                11. **Maintenance and Support Plan**  
+                    - Maintenance schedule  
+                    - Support contact and escalation paths  
+
+                Ensure each document is formatted in a clear, professional structure with headings, subheadings, and concise language. Avoid bullet points unless listing subcategories within a section.
+                """
+
+        response = api_call_with_delay(client, prompt)
+        return response.strip()
+    except Exception as e:
+        print(f"Error planning implementation: {e}")
+        return "Unable to plan implementation due to an error."
+
+
+def extract_tech_stack(implementation_design):
+    try:
+        sentences = sent_tokenize(implementation_design)
+        tech_stack_sentence = next((s for s in sentences if "tech stack" in s.lower()), "")
+
+        if tech_stack_sentence:
+            stop_words = set(stopwords.words('english'))
+            lemmatizer = WordNetLemmatizer()
+            words = word_tokenize(tech_stack_sentence)
+            tech_words = [lemmatizer.lemmatize(word) for word in words if
+                          word.lower() not in stop_words and word.isalnum()]
+            return ", ".join(tech_words)
+        else:
+            return "Not specified"
+    except Exception as e:
+        print(f"Error in extract_tech_stack: {e}")
+        return "Error extracting tech stack"
+
+
+def extract_implementation_parts(client, implementation_design, synthesized_solution):
+    try:
+        prompt = f"""
+        Analyze the provided project documentation to identify the most critical sub-documents that represent distinct and essential components of the project.
+
+        Guidelines for Extraction:
+        1. Focus on identifying key sub-documents that cover different vital aspects of the project.
+        2. Each sub-document should represent a significant part of the project documentation, such as planning, requirements, design, or testing.
+        3. Avoid overly broad categories and redundancy between sub-documents.
+        4. Ensure the sub-documents collectively provide a comprehensive structure to support the project's success.
+
+        Specific Requirements:
+        - Extract 5-8 distinct sub-documents.
+        - Provide the title of each sub-document.
+        - Include a concise description of the purpose and contents of each sub-document.
+        - Sub-documents should reflect core components such as planning, design, risk, testing, implementation, and maintenance.
+
+        Project Documentation: 
+        {implementation_design}
+
+        Synthesized Solution: 
+        {synthesized_solution}
+
+        Output Format:
+        Present the sub-documents as a prioritized list with:
+        1. Sub-document title
+        2. Description of the sub-document (2-3 sentences highlighting its purpose and what it contains)
+        """
+
+        response = api_call_with_delay(client, prompt)
+
+        # Split the response into parts, trimming and removing empty entries
+        sub_documents = [part.strip() for part in response.split('\n') if part.strip()]
+
+        # Fallback if no parts are extracted
+        if not sub_documents:
+            sub_documents = [
+                "Project Proposal: Details the objectives, background, and benefits of the project.",
+                "Project Plan: Outlines the WBS, timeline, resource allocation, and milestones.",
+                "Requirements Specification: Defines the functional and non-functional requirements.",
+                "Risk Management Plan: Identifies risks and mitigation strategies.",
+                "Design Document: Provides architecture, UI/UX guidelines, and technical specifications.",
+                "Testing Plan: Describes the scope, types of testing, and success criteria.",
+                "Implementation Plan: Specifies deployment steps, infrastructure, and rollout strategies.",
+                "Maintenance Plan: Details ongoing support, updates, and user assistance procedures."
+            ]
+
+        # Limit to 5 parts maximum
+        return sub_documents[:8]
+
+    except Exception as e:
+
+        print(f"Error extracting sub-documents via LLM: {e}")
+
+        return [
+
+            "Project Proposal: Details the objectives, background, and benefits of the project.",
+
+            "Project Plan: Outlines the WBS, timeline, resource allocation, and milestones.",
+
+            "Requirements Specification: Defines the functional and non-functional requirements.",
+
+            "Risk Management Plan: Identifies risks and mitigation strategies.",
+
+            "Design Document: Provides architecture, UI/UX guidelines, and technical specifications.",
+
+            "Testing Plan: Describes the scope, types of testing, and success criteria.",
+
+            "Implementation Plan: Specifies deployment steps, infrastructure, and rollout strategies.",
+
+            "Maintenance Plan: Details ongoing support, updates, and user assistance procedures."
+
+        ]
+
+
+def implement_solution_part(client, implementation_design, part, tech_stack):
+    try:
+        prompt = (
+            f"As an experienced project manager and technical writer, create comprehensive documentation for the following sub-document:\n\n"
+            f"Overall Project Documentation: {implementation_design}\n\n"
+            f"Focus Sub-Document: {part}\n\n"
+            f"Tools and Technology Stack: {tech_stack}\n"
+            f"Generate a well-structured, detailed document for the selected sub-document. The document should include the following elements:\n\n"
+            f"1. **Purpose and Scope**\n"
+            f"   - Clear explanation of the sub-document's purpose.\n"
+            f"   - Define its scope and relevance to the overall project.\n\n"
+            f"2. **Key Objectives and Deliverables**\n"
+            f"   - Outline the primary goals of this sub-document.\n"
+            f"   - Specify the deliverables associated with this component.\n\n"
+            f"3. **Methodology and Approach**\n"
+            f"   - Detail the strategy or methods to develop or implement this sub-document.\n"
+            f"   - Include frameworks, models, or specific tools to be used.\n\n"
+            f"4. **Dependencies and Interconnections**\n"
+            f"   - Highlight any dependencies on other sub-documents or components.\n"
+            f"   - Explain how this document integrates with the rest of the project.\n\n"
+            f"5. **Implementation Plan**\n"
+            f"   - Provide a phased or step-by-step plan for execution.\n"
+            f"   - Include timelines, milestones, and responsible parties.\n\n"
+            f"6. **Challenges and Mitigation Strategies**\n"
+            f"   - Identify potential risks or challenges related to this component.\n"
+            f"   - Suggest mitigation strategies or contingency plans.\n\n"
+            f"7. **Evaluation Metrics**\n"
+            f"   - Define success criteria or performance indicators for this sub-document.\n"
+            f"   - Include qualitative and quantitative measures where applicable.\n\n"
+            f"Format the output in Markdown with structured headings for readability. The document should serve as a clear, actionable blueprint for the specific sub-document's implementation.\n\n"
+            f"Provide the filename at the beginning of the response in the format: `### Filename: <sub_document_title>.md`\n"
+        )
+
+        response = api_call_with_delay(client, prompt)
+        return parse_implementation(response)
+    except Exception as e:
+        print(f"Error implementing solution part: {e}")
+        return []
+
+
+def parse_implementation(implementation):
+    files = []
+    current_file = None
+    current_content = []
+    seen_files = set()
+
+    for line in implementation.split('\n'):
+        if line.startswith('### Filename:'):
+            if current_file and current_file.strip('`').lower() not in seen_files:
+                files.append((current_file, '\n'.join(current_content)))
+                seen_files.add(current_file.strip('`').lower())
+            current_file = line.split(':')[1].strip()
+            current_content = []
+        elif line.startswith(f'### End of {current_file}'):
+            if current_file and current_file.strip('`').lower() not in seen_files:
+                files.append((current_file, '\n'.join(current_content)))
+                seen_files.add(current_file.strip('`').lower())
+            current_file = None
+            current_content = []
+        elif current_file:
+            current_content.append(line)
+
+    if current_file and current_file.strip('`').lower() not in seen_files:
+        files.append((current_file, '\n'.join(current_content)))
+
+    return files
+
+
+def generate_readme(client, topic, goal, synthesized_solution, implementation_design, tech_stack, implemented_files):
+    try:
+        files_list = "\n".join([f"- {file}" for file in implemented_files])
+        prompt = f"""
+        Create a comprehensive README.md file for the following implemented solution:
+
+        Topic: {topic}
+        Goal: {goal}
+        Synthesized Solution: {synthesized_solution}
+        Implementation Design: {implementation_design}
+        Tech Stack: {tech_stack}
+        Implemented Files:
+        {files_list}
+
+        The README should include:
+        1. Project Title and Description
+        2. Installation Instructions
+        3. Usage Guide
+        4. File Structure
+        5. Dependencies
+        6. Configuration (if any)
+        7. Troubleshooting
+        8. Contributors
+        9. License
+
+        Format the README in Markdown syntax.
+        """
+
+        response = api_call_with_delay(client, prompt)
+        return response
+    except Exception as e:
+        print(f"Error generating README: {e}")
+        return "Unable to generate README due to an error."
+
+
+def save_implementation(files, solution_name):
+    folder_name = solution_name.replace(" ", "_").lower()
+    os.makedirs(folder_name, exist_ok=True)
+
+    # Keep track of unique files to avoid duplicates
+    saved_files = set()
+
+    for file_name, content in files:
+        # Normalize the file name to avoid case sensitivity issues
+        normalized_file_name = file_name.strip('`').lower()
+
+        if normalized_file_name in saved_files:
+            print(f"Skipping duplicate file: {file_name}")
+            continue
+
+        try:
+            # Create subdirectories if needed
+            file_path = os.path.join(folder_name, file_name.strip('`'))
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+
+            saved_files.add(normalized_file_name)
+            print(f"Successfully saved: {file_name}")
+
+        except IOError as e:
+            print(f"Error saving file {file_name}: {str(e)}")
+        except Exception as e:
+            print(f"Unexpected error while saving {file_name}: {str(e)}")
+
+    print(f"\nImplementation saved in folder: {folder_name}")
+    print(f"Total unique files saved: {len(saved_files)}")
+
+
+def main():
+    try:
+        # Clear screen for a clean start
+        os.system('cls' if os.name == 'nt' else 'clear')
+
+        print_section_header("DYNAMIC EXPERT BRAINSTORMING SESSION")
+
+        # Input initial problem parameters
+        # Allow flexibility in defining experts or letting the system decide
+        num_experts_input = input("Enter the number of experts (or press Enter to let the system decide): ")
+
+        # Determine number of experts
+        num_experts = int(num_experts_input) if num_experts_input.strip() else None
+
+        # Collect core problem details
+        topic = input("Enter the complex problem or question for expert brainstorming: ")
+        goal = input("Enter the specific goal of this brainstorming session: ")
+
+        # Initialize LLM client
+        client = create_llm("gpt-4o-mini")
+
+        # DYNAMIC EXPERT GENERATION
+        # This is our new approach to creating experts tailored to the problem
+        experts = generate_dynamic_experts(
+            client,
+            topic,
+            goal,
+            num_experts  # Optional parameter
+        )
+
+        # Validate and adjust experts if needed
+        if not experts:
+            print(
+                Fore.YELLOW + "Warning: No experts generated. Falling back to manual expert creation." + Style.RESET_ALL)
+            experts = []
+            fallback_num = num_experts or 3  # Default to 3 if not specified
+            for i in range(fallback_num):
+                expertise = input(f"Enter expertise for Expert {i + 1}: ")
+                experts.append({"name": f"Expert {i + 1}", "expertise": expertise})
+
+        # Print generated expert team
+        print("\nGenerated Expert Team:")
+        for expert in experts:
+            print(Fore.GREEN + f"{expert['name']} - {expert['expertise']}" + Style.RESET_ALL)
+
+        # Initialize conversation tracking
+        conversation_history = [{'speaker': 'Moderator', 'content': f"Today's brainstorming challenge: {topic}"}]
+        brainstorming_log = [{
+            'topic': topic,
+            'goal': goal,
+            'experts': experts,
+            'rounds': []
+        }]
+
+        # DYNAMIC INTERACTION STRATEGY
+        # Generate a sophisticated interaction strategy
+        interaction_strategy = create_dynamic_interaction_strategy(
+            client,
+            experts,
+            topic,
+            goal
+        )
+
+        print(Fore.CYAN + "\nDynamic Interaction Strategy Generated" + Style.RESET_ALL)
+        print(interaction_strategy[:500] + "...")  # Truncate for display
+
+        # Determine number of interaction rounds
+        num_rounds = min(max(len(experts), 2), 5)  # Dynamic round determination
+        print(f"\nPreparing for {num_rounds} interaction rounds")
+
+        # MULTI-ROUND BRAINSTORMING
+        for round_num in range(num_rounds):
+            print_section_header(f"ROUND {round_num + 1}")
+
+            # Store round-specific contributions
+            round_contributions = {}
+
+            # Expert Interactions
+            for expert in experts:
+                # Generate contribution with context-aware prompting
+                contribution = generate_contribution(
+                    client,
+                    conversation_history,
+                    expert,
+                    interaction_strategy  # Use dynamic strategy
+                )
+
+                # Display and log expert contribution
+                print_expert_contribution(
+                    expert["name"],
+                    expert["expertise"],
+                    contribution
+                )
+
+                # Update conversation history
+                conversation_history.append({
+                    'speaker': expert["name"],
+                    'content': contribution
+                })
+                round_contributions[expert["name"]] = contribution
+
+            # Progress Assessment
+            progress_assessment = check_progress(client, conversation_history, goal)
+            print_progress_assessment(progress_assessment)
+            conversation_history.append({
+                'speaker': 'Progress Checker',
+                'content': progress_assessment
+            })
+            round_contributions['Progress Assessment'] = progress_assessment
+
+            # Log round details
+            brainstorming_log[0]['rounds'].append({
+                'round': round_num + 1,
+                **round_contributions
+            })
+
+        # SOLUTION SYNTHESIS
+        print_section_header("SOLUTION SYNTHESIS")
+        synthesized_solution = synthesize_solution(client, conversation_history, goal)
+        print_synthesized_solution(synthesized_solution)
+
+        # Design implementation
+        implementation_design = design_implementation(client, synthesized_solution, goal)
+        print_implementation_design(implementation_design)
+        conversation_history.append({'speaker': 'Software Architect', 'content': implementation_design})
+        brainstorming_log[0]['implementation_design'] = implementation_design
+
+        # Extract tech stack and implementation parts using NLP techniques
+        tech_stack = extract_tech_stack(implementation_design)
+        implementation_parts = extract_implementation_parts(client, implementation_design, synthesized_solution)
+
+        print_tech_stack_and_parts(tech_stack, implementation_parts)
+        print("Extracted Implementation Parts:")
+        for part in implementation_parts:
+            print(f"- {part}")
+
+        # Implement solution using multiple threads
+        print("\nImplementing the solution...")
+        implemented_files = []
+
+        with ThreadPoolExecutor(max_workers=len(implementation_parts)) as executor:
+            future_to_part = {
+                executor.submit(implement_solution_part, client, implementation_design, part,
+                                tech_stack): part for part in implementation_parts}
+            for future in as_completed(future_to_part):
+                part = future_to_part[future]
+                try:
+                    result = future.result()
+                    if result:
+                        implemented_files.extend(result)
+                        print(f"Implemented part: {part[:50]}...")
+                        for file_name, _ in result:
+                            print(f"  - Created file: {file_name}")
+                    else:
+                        print(f"Failed to implement part: {part[:50]}... (No files generated)")
+                except Exception as e:
+                    print(f"Failed to implement part: {part[:50]}... Error: {str(e)}")
+
+        readme_content = generate_readme(client, topic, goal, synthesized_solution, implementation_design, tech_stack,
+                                         [file[0] for file in implemented_files])
+        implemented_files.append(("README.md", readme_content))
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        if implemented_files:
+            save_implementation(implemented_files, f"solution_{timestamp}")
+            brainstorming_log[0]['implemented_files'] = [file[0] for file in implemented_files]
+            print_implementation_progress(len(implemented_files))
+        else:
+            print("\nFailed to implement the solution. No files were generated.")
+
+        # Save the updated brainstorming log
+        filename = f"brainstorming_log_{timestamp}.json"
+        with open(filename, 'w') as f:
+            json.dump(brainstorming_log, f, indent=2)
+        print(f"Updated brainstorming log saved to {filename}")
+
+    except ValueError as ve:
+        print(f"A value error occurred: {ve}")
+    except IOError as ioe:
+        print(f"I/O error occurred: {ioe}")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+        print(Fore.RED + f"An error occurred: {e}" + Style.RESET_ALL)
+
+
+if __name__ == "__main__":
+    main()
